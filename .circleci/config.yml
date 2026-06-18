@@ -1,0 +1,60 @@
+version: 2.1
+
+parameters:
+  machine-image:
+    type: string
+    default: "ubuntu-2204:2025.09.1"
+
+jobs:
+  build-with-dlc:
+    machine:
+      image: << pipeline.parameters.machine-image >>
+      docker_layer_caching: true
+    steps:
+      - checkout
+      - run:
+          name: Environment info
+          command: |
+            echo "=== Machine image: << pipeline.parameters.machine-image >> ==="
+            echo ""
+            echo "=== Docker version ==="
+            docker version --format '{{.Server.Version}}'
+            echo ""
+            echo "=== Storage driver ==="
+            docker info --format 'Storage Driver: {{.Driver}}'
+            echo ""
+            echo "=== daemon.json ==="
+            cat /etc/docker/daemon.json 2>/dev/null || echo "(none)"
+            echo ""
+            echo "=== /var/lib/docker top-level ==="
+            sudo ls /var/lib/docker/
+            echo ""
+            echo "=== overlay2 dir ==="
+            sudo ls /var/lib/docker/overlay2/ 2>/dev/null || echo "(does not exist)"
+            echo ""
+            echo "=== image store ==="
+            sudo find /var/lib/docker/image -maxdepth 2 -type d 2>/dev/null | sort || echo "(empty)"
+      - run:
+          name: Docker build
+          command: |
+            echo "Building image with DLC enabled..."
+            docker build -t dlc-repro:latest .
+            echo ""
+            echo "Build succeeded. Image ID:"
+            docker images dlc-repro:latest --format '{{.ID}}'
+      - run:
+          name: Post-build storage state
+          command: |
+            echo "=== /var/lib/docker after build ==="
+            sudo ls /var/lib/docker/
+            echo ""
+            echo "=== overlay2 dir after build ==="
+            sudo ls /var/lib/docker/overlay2/ 2>/dev/null || echo "(does not exist)"
+            echo ""
+            echo "=== docker images ==="
+            docker images
+
+workflows:
+  dlc-test:
+    jobs:
+      - build-with-dlc
