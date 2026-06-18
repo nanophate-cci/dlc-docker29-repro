@@ -1,31 +1,22 @@
-# DLC Docker 29 Reproduction
+# DLC Docker 29 Reproduction — Docker 28 → 29 Direction
 
-Demonstrates that Docker Layer Caching (DLC) on CircleCI is incompatible with
-Docker 29's default `containerd snapshotter` storage driver.
+Tests what happens when DLC restores a Docker 28 (overlay2) cache onto Docker 29
+(containerd snapshotter). **This direction works** because Docker 29 auto-detects
+the overlay2 layout and falls back to overlay2 mode.
 
-## The Problem
+See [`dlc-docker29-corruption`](https://github.com/nanophate-cci/dlc-docker29-corruption)
+for the failing reproduction (Docker 29 → Docker 29).
 
-CircleCI's DLC snapshots `/var/lib/docker` as a raw filesystem blob. Docker 28
-stores layers under `/var/lib/docker/overlay2/`, but Docker 29 switched to the
-containerd image store — a completely different on-disk layout. When DLC
-restores a cache created by one engine version onto the other, Docker can't find
-its layers and builds fail with:
+## Results
 
-```
-parent snapshot ... does not exist
-content digest ... not found
-```
+| Step | Pipeline | What happened | Result |
+|------|----------|--------------|--------|
+| 1 | [#2 / Job #2](https://app.circleci.com/pipelines/github/nanophate-cci/dlc-docker29-repro/2/workflows/cb4e8d2a-bc10-4650-8125-41b3579cdef0/jobs/2) | Docker 28 seeds DLC with overlay2 layout | **Success** |
+| 2 | [#3 / Job #3](https://app.circleci.com/pipelines/github/nanophate-cci/dlc-docker29-repro/3/workflows/a1951caf-33f4-4ec8-8429-de073b5feb5b/jobs/3) | Docker 29 restores Docker 28 cache → auto-detects overlay2 → all layers CACHED | **Success** |
 
-## How to Reproduce
+## Usage
 
-1. **Pipeline 1** — trigger with `machine-image: ubuntu-2204:2025.09.1` (Docker 28).
-   DLC seeds the cache using `/var/lib/docker/overlay2/`.
-
-2. **Pipeline 2** — trigger with `machine-image: ubuntu-2204:2026.05.1` (Docker 29).
-   DLC restores the Docker 28 cache. Docker 29 doesn't recognise the `overlay2/`
-   layout → build errors.
-
-Use the CircleCI API to trigger with parameters:
+Trigger with a specific machine image via pipeline parameters:
 
 ```bash
 curl -X POST https://circleci.com/api/v2/project/gh/nanophate-cci/dlc-docker29-repro/pipeline \
@@ -33,9 +24,3 @@ curl -X POST https://circleci.com/api/v2/project/gh/nanophate-cci/dlc-docker29-r
   -H "Content-Type: application/json" \
   -d '{"parameters": {"machine-image": "ubuntu-2204:2026.05.1"}}'
 ```
-
-## Related
-
-- [moby/moby#49347](https://github.com/moby/moby/issues/49347) — Docker 29 containerd image store migration
-- [docker/buildx#3046](https://github.com/docker/buildx/issues/3046) — `parent snapshot does not exist`
-- GitHub Actions rolled back Docker 29 for the same class of issue
